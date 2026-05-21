@@ -45,46 +45,30 @@ jobs:
           PORT=$PORT
           NODE_ENV=production
           EOF
-          cat .env
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Test SSH connection
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo 'SSH connection successful' && uname -a"
 
       - name: Package and upload
         run: |
           tar -czf /tmp/api4.tar.gz -C api4 .
           ls -la /tmp/api4.tar.gz
 
-      - name: Deploy to server
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-        run: |
-          echo "=== Installing SSH tools ==="
-          sudo apt-get update
-          sudo apt-get install -y openssh-client sshpass
-
-          echo "=== Testing SSH connection ==="
-          echo "Server: $SERVER_IP"
-          echo "User: $SERVER_USER"
-          
-          sshpass -v -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SERVER_USER@$SERVER_IP "echo 'SSH connection successful' && uname -a"
-
       - name: Upload files to server
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
         run: |
-          echo "=== Uploading files ==="
-          sshpass -v -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/api4.tar.gz $SERVER_USER@$SERVER_IP:/tmp/api4.tar.gz
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/api4.tar.gz ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/api4.tar.gz
 
       - name: Setup and start API
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
         run: |
-          echo "=== Setting up on server ==="
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
             set -e
             
             echo "Creating directories..."
@@ -101,7 +85,7 @@ jobs:
             ls -la
             
             echo "Installing dependencies..."
-            npm install --production 2>&1 || npm install --production 2>&1
+            npm install --production
             
             echo "Installing PM2 globally..."
             npm install -g pm2
@@ -110,7 +94,7 @@ jobs:
             pm2 delete api4 2>/dev/null || true
             
             echo "Starting API..."
-            pm2 start ecosystem.config.js --name api4 || node bin/www &
+            pm2 start ecosystem.config.js --name api4
             
             sleep 3
             
@@ -119,14 +103,8 @@ jobs:
             
             echo "API health check:"
             curl -v http://localhost:3000/ 2>&1 || echo "API not responding"
-            
           ENDSSH
 
       - name: Verify deployment
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
         run: |
-          echo "=== Final verification ==="
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "pm2 list && curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "pm2 list && curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/"

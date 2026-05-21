@@ -39,29 +39,21 @@ jobs:
         working-directory: ./react
         run: npm run build
 
-      - name: Upload to server
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+      - name: Setup SSH key
         run: |
-          echo "=== Installing SSH tools ==="
-          sudo apt-get update
-          sudo apt-get install -y openssh-client sshpass
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          echo "=== Packaging build ==="
+      - name: Upload to server
+        run: |
           tar -czf /tmp/react-dist.tar.gz -C react/dist .
-
-          echo "=== Uploading to server ==="
-          sshpass -v -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/react-dist.tar.gz $SERVER_USER@$SERVER_IP:/tmp/react-dist.tar.gz
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/react-dist.tar.gz ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/react-dist.tar.gz
 
       - name: Deploy React
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
         run: |
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
             set -e
             
             echo "Creating directories..."
@@ -75,15 +67,9 @@ jobs:
             ls -la /var/www/react/
             
             echo "Setting permissions..."
-            chown -R www-data:www-data /var/www/react
+            chown -R www-data:www-data /var/www/react || true
           ENDSSH
 
       - name: Verify
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-          DOMAIN: ${{ secrets.DOMAIN }}
         run: |
-          echo "=== Final verification ==="
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "ls -la /var/www/react/ && echo 'Deployment successful'"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "ls -la /var/www/react/ && echo 'Deployment successful'"
