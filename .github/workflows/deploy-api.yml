@@ -59,8 +59,8 @@ jobs:
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
         run: |
           echo "=== Installing SSH tools ==="
-          apt-get update
-          apt-get install -y openssh-client sshpass
+          sudo apt-get update
+          sudo apt-get install -y openssh-client sshpass
 
           echo "=== Testing SSH connection ==="
           echo "Server: $SERVER_IP"
