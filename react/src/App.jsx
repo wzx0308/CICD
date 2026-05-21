@@ -32,7 +32,7 @@ export default class App extends Component {
   }
   refInput=React.createRef()
   login= async()=>{
-    const res=await axios.post('http://localhost:3000/login',
+    const res = await axios.post('/api/login',
       {name:this.refInput.current.value})
       console.log(res.data)
       if(res.data.code==200){
@@ -95,14 +95,14 @@ export default class App extends Component {
   }
   
   render() {
-    const zhengque=0
-    const cuowu=0
+    const zhengque = Object.values(this.state.answers).filter(a => a.isTrue).length
+    const cuowu = Object.values(this.state.answers).filter(a => !a.isTrue).length
     return (
       <div className='box'>
         <div className='left'>
           {this.state.isshow?(
             <div>
-              <h1>欢迎来到答题系统</h1>
+              <h1>在线答题系统</h1>
               <p>当前用户:{sessionStorage.getItem('name')}</p>
               <button onClick={()=>this.tui()}>退出答题</button>
             </div>
