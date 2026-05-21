@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Uploaded files
+upload/*
+!upload/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+dist/
+build/

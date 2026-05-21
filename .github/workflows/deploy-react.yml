@@ -1,0 +1,82 @@
+name: Deploy React
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'react/**'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        working-directory: ./react
+        run: npm ci
+
+      - name: Create .env.production
+        working-directory: ./react
+        env:
+          VITE_API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          cat > .env.production << EOF
+          VITE_API_BASE_URL=$VITE_API_BASE_URL
+          EOF
+
+      - name: Build
+        working-directory: ./react
+        run: npm run build
+
+      - name: Deploy to server
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          apt-get update && apt-get install -y openssh-client sshpass
+
+          tar -czf /tmp/react-dist.tar.gz -C react/dist .
+          
+          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/react-dist.tar.gz $SERVER_USER@$SERVER_IP:/tmp/react-dist.tar.gz
+
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP bash << 'REMOTE_SCRIPT'
+            set -e
+            mkdir -p /var/www/react
+            
+            # Backup old build
+            if [ -d /var/www/react ]; then
+              rm -rf /var/www/react.bak
+              mv /var/www/react /var/www/react.bak
+            fi
+            
+            tar -xzf /tmp/react-dist.tar.gz -C /var/www/react
+            rm -f /tmp/react-dist.tar.gz
+            
+            echo "React deployed successfully"
+          REMOTE_SCRIPT
+
+      - name: Verify deployment
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          sleep 3
+          DOMAIN_URL="http://${DOMAIN:-localhost}"
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "ls -la /var/www/react && curl -s -o /dev/null -w '%{http_code}' $DOMAIN_URL/ || curl -s -o /dev/null -w '%{http_code}' http://localhost/"

@@ -1,0 +1,104 @@
+name: Deploy API
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'api4/**'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        working-directory: ./api4
+        run: npm ci
+
+      - name: Create .env file
+        working-directory: ./api4
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PORT: ${{ secrets.API_PORT }}
+        run: |
+          cat > .env << EOF
+          DB_HOST=$DB_HOST
+          DB_USER=$DB_USER
+          DB_PASSWORD=$DB_PASSWORD
+          DB_NAME=$DB_NAME
+          JWT_SECRET=$JWT_SECRET
+          PORT=$PORT
+          NODE_ENV=production
+          EOF
+
+      - name: Deploy to server
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          apt-get update && apt-get install -y openssh-client sshpass
+
+          echo "$SERVER_PASSWORD" | sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP " \
+            mkdir -p /var/www/api4 && \
+            cd /var/www/api4 && \
+            rm -rf ./* && \
+            tar -xzf /tmp/api4.tar.gz 2>/dev/null || true && \
+            if [ ! -f package.json ]; then \
+              echo 'Package not found, waiting for upload...'; \
+            fi \
+          "
+
+          tar -czf /tmp/api4.tar.gz -C api4 .
+          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/api4.tar.gz $SERVER_USER@$SERVER_IP:/tmp/api4.tar.gz
+
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP bash << 'REMOTE_SCRIPT'
+            set -e
+            cd /var/www/api4
+            tar -xzf /tmp/api4.tar.gz
+            rm -f /tmp/api4.tar.gz
+            
+            # Install dependencies
+            npm ci --production
+            
+            # Setup PM2
+            npm install -g pm2
+            
+            # Stop existing process
+            pm2 delete api4 2>/dev/null || true
+            
+            # Start with PM2
+            pm2 start ecosystem.config.js || node bin/www
+            
+            # Save PM2 config
+            pm2 save
+            
+            echo "API deployed successfully"
+          REMOTE_SCRIPT
+
+      - name: Verify deployment
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          sleep 5
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "pm2 list && curl -s http://localhost:3000 || echo 'API not responding yet'"
