@@ -70,31 +70,24 @@ jobs:
             chown -R www-data:www-data /var/www/react || true
             
             echo "Configuring Nginx..."
-            sudo tee /etc/nginx/sites-available/react > /dev/null << 'NGINX_EOF'
-server {
-    listen 80;
-    server_name _;
-
-    root /var/www/react;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:3000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location /upload/ {
-        alias /var/www/api4/upload/;
-    }
-}
-NGINX_EOF
+            echo 'server {
+                listen 80;
+                server_name _;
+                root /var/www/react;
+                index index.html;
+                location / {
+                    try_files $uri $uri/ /index.html;
+                }
+                location /api/ {
+                    proxy_pass http://127.0.0.1:3000/;
+                    proxy_http_version 1.1;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                }
+                location /upload/ {
+                    alias /var/www/api4/upload/;
+                }
+            }' | sudo tee /etc/nginx/sites-available/react
             
             sudo ln -sf /etc/nginx/sites-available/react /etc/nginx/sites-enabled/react
             sudo rm -f /etc/nginx/sites-enabled/default
