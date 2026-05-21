@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./api4
-        run: npm ci
+        run: npm install
 
       - name: Create .env file
         working-directory: ./api4
@@ -101,7 +101,7 @@ jobs:
             ls -la
             
             echo "Installing dependencies..."
-            npm ci --production 2>&1 || npm install --production 2>&1
+            npm install --production 2>&1 || npm install --production 2>&1
             
             echo "Installing PM2 globally..."
             npm install -g pm2
