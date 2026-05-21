@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'react/**'
   workflow_dispatch:
 
 env:
