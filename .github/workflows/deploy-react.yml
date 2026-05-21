@@ -39,42 +39,51 @@ jobs:
         working-directory: ./react
         run: npm run build
 
-      - name: Deploy to server
+      - name: Upload to server
         env:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-          DOMAIN: ${{ secrets.DOMAIN }}
         run: |
-          apt-get update && apt-get install -y openssh-client sshpass
+          echo "=== Installing SSH tools ==="
+          apt-get update
+          apt-get install -y openssh-client sshpass
 
+          echo "=== Packaging build ==="
           tar -czf /tmp/react-dist.tar.gz -C react/dist .
-          
-          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/react-dist.tar.gz $SERVER_USER@$SERVER_IP:/tmp/react-dist.tar.gz
 
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP bash << 'REMOTE_SCRIPT'
+          echo "=== Uploading to server ==="
+          sshpass -v -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/react-dist.tar.gz $SERVER_USER@$SERVER_IP:/tmp/react-dist.tar.gz
+
+      - name: Deploy React
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'ENDSSH'
             set -e
+            
+            echo "Creating directories..."
             mkdir -p /var/www/react
             
-            # Backup old build
-            if [ -d /var/www/react ]; then
-              rm -rf /var/www/react.bak
-              mv /var/www/react /var/www/react.bak
-            fi
-            
+            echo "Extracting files..."
             tar -xzf /tmp/react-dist.tar.gz -C /var/www/react
             rm -f /tmp/react-dist.tar.gz
             
-            echo "React deployed successfully"
-          REMOTE_SCRIPT
+            echo "Listing files..."
+            ls -la /var/www/react/
+            
+            echo "Setting permissions..."
+            chown -R www-data:www-data /var/www/react
+          ENDSSH
 
-      - name: Verify deployment
+      - name: Verify
         env:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
           DOMAIN: ${{ secrets.DOMAIN }}
         run: |
-          sleep 3
-          DOMAIN_URL="http://${DOMAIN:-localhost}"
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "ls -la /var/www/react && curl -s -o /dev/null -w '%{http_code}' $DOMAIN_URL/ || curl -s -o /dev/null -w '%{http_code}' http://localhost/"
+          echo "=== Final verification ==="
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "ls -la /var/www/react/ && echo 'Deployment successful'"

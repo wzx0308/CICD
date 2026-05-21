@@ -45,52 +45,82 @@ jobs:
           PORT=$PORT
           NODE_ENV=production
           EOF
+          cat .env
+
+      - name: Package and upload
+        run: |
+          tar -czf /tmp/api4.tar.gz -C api4 .
+          ls -la /tmp/api4.tar.gz
 
       - name: Deploy to server
         env:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
-          DOMAIN: ${{ secrets.DOMAIN }}
         run: |
-          apt-get update && apt-get install -y openssh-client sshpass
+          echo "=== Installing SSH tools ==="
+          apt-get update
+          apt-get install -y openssh-client sshpass
 
-          echo "$SERVER_PASSWORD" | sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP " \
-            mkdir -p /var/www/api4 && \
-            cd /var/www/api4 && \
-            rm -rf ./* && \
-            tar -xzf /tmp/api4.tar.gz 2>/dev/null || true && \
-            if [ ! -f package.json ]; then \
-              echo 'Package not found, waiting for upload...'; \
-            fi \
-          "
+          echo "=== Testing SSH connection ==="
+          echo "Server: $SERVER_IP"
+          echo "User: $SERVER_USER"
+          
+          sshpass -v -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SERVER_USER@$SERVER_IP "echo 'SSH connection successful' && uname -a"
 
-          tar -czf /tmp/api4.tar.gz -C api4 .
-          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/api4.tar.gz $SERVER_USER@$SERVER_IP:/tmp/api4.tar.gz
+      - name: Upload files to server
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          echo "=== Uploading files ==="
+          sshpass -v -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no /tmp/api4.tar.gz $SERVER_USER@$SERVER_IP:/tmp/api4.tar.gz
 
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP bash << 'REMOTE_SCRIPT'
+      - name: Setup and start API
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          echo "=== Setting up on server ==="
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP << 'ENDSSH'
             set -e
+            
+            echo "Creating directories..."
+            mkdir -p /var/www/api4
+            mkdir -p /var/www/api4/logs
+            mkdir -p /var/www/api4/upload
+            
+            echo "Extracting files..."
             cd /var/www/api4
             tar -xzf /tmp/api4.tar.gz
             rm -f /tmp/api4.tar.gz
             
-            # Install dependencies
-            npm ci --production
+            echo "Listing files..."
+            ls -la
             
-            # Setup PM2
+            echo "Installing dependencies..."
+            npm ci --production 2>&1 || npm install --production 2>&1
+            
+            echo "Installing PM2 globally..."
             npm install -g pm2
             
-            # Stop existing process
+            echo "Stopping existing process..."
             pm2 delete api4 2>/dev/null || true
             
-            # Start with PM2
-            pm2 start ecosystem.config.js || node bin/www
+            echo "Starting API..."
+            pm2 start ecosystem.config.js --name api4 || node bin/www &
             
-            # Save PM2 config
-            pm2 save
+            sleep 3
             
-            echo "API deployed successfully"
-          REMOTE_SCRIPT
+            echo "PM2 status:"
+            pm2 list
+            
+            echo "API health check:"
+            curl -v http://localhost:3000/ 2>&1 || echo "API not responding"
+            
+          ENDSSH
 
       - name: Verify deployment
         env:
@@ -98,5 +128,5 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
         run: |
-          sleep 5
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "pm2 list && curl -s http://localhost:3000 || echo 'API not responding yet'"
+          echo "=== Final verification ==="
+          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP "pm2 list && curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/"
