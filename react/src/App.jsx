@@ -102,15 +102,17 @@ export default class App extends Component {
         <div className='left'>
           {this.state.isshow?(
             <div>
-              <h1>在线答题系统</h1>
-              <p>当前用户:{sessionStorage.getItem('name')}</p>
-              <button onClick={()=>this.tui()}>退出答题</button>
+              <h1>📝 在线答题系统</h1>
+              <p className="user-info">👤 当前用户：{sessionStorage.getItem('name')}</p>
+              <button className="btn-logout" onClick={()=>this.tui()}>退出登录</button>
             </div>
           ):(
             <div>
-            <p>用户名：<input type="text" placeholder='请输入用户名' ref={this.refInput}/>
-          <span>{this.state.err}</span></p>
-          <button onClick={()=>this.login()}>登录</button>
+            <p className="login-input">
+              <input type="text" placeholder="请输入用户名" ref={this.refInput}/>
+            </p>
+            <span className="error">{this.state.err}</span>
+            <button className="btn-login" onClick={()=>this.login()}>登录</button>
           </div>
           )}
           
@@ -121,39 +123,42 @@ export default class App extends Component {
           )}
           {this.state.options.length>this.state.curIndex?(
             <div>
-              <h3>答题系统</h3>
-          <h1>
+              <h3> 答题系统</h3>
+          <h1 className="question-title">
             <p>{this.state.options[this.state.curIndex].title}</p>
           </h1>
-          <ul>
+          <ul className="options-list">
             {this.state.options[this.state.curIndex].option.map((item,index)=>{
               return (
-                <li key={item}>
+                <li key={item} className={this.state.userIndex==index ? 'option-item selected' : 'option-item'}>
                   <input type="radio" name='answer' checked={this.state.userIndex==index} onChange={()=>this.setState({userIndex:index})}/>
-                  {item}
+                  <label>{String.fromCharCode(65+index)}. {item}</label>
                 </li>
               )
             })}
           </ul>
           {this.state.isSubmit?(
             <div>
-              <button disabled>{this.state.answers[this.state.curIndex].isTrue?"回答正确":"回答错误"}</button>
-            <p>倒计时:{this.state.time}自动进入下一题</p>
+              <button className={this.state.answers[this.state.curIndex].isTrue ? "btn-result correct" : "btn-result wrong"} disabled>
+                {this.state.answers[this.state.curIndex].isTrue ? "✅ 回答正确" : "❌ 回答错误"}
+              </button>
+              <p className="countdown">⏱️ 倒计时：{this.state.time}秒后自动进入下一题</p>
             </div>
           ):(
-            <button onClick={()=>this.handelSubmit()}>提交答案</button>
+            <button className="btn-submit" onClick={()=>this.handelSubmit()}>提交答案</button>
           )}
-            <p>
-              共有{this.state.options.length}道题，
-              答对{cuowu}道，
-              答错{this.state.zhengque}道
+            <p className="progress">
+              第 {this.state.curIndex+1}/{this.state.options.length} 题 | 
+              ✅ 答对 {cuowu} 道 | 
+              ❌ 答错 {zhengque} 道
             </p>
             </div>
           ):
           (
-            <div>
-                <p>答题结束</p>
-                <button onClick={()=>this.chongxing()}>重新开始</button>
+            <div className="result-box">
+                <p className="result-title"> 答题结束</p>
+                <p className="result-score">最终得分：{cuowu} / {this.state.options.length}</p>
+                <button className="btn-restart" onClick={()=>this.chongxing()}>🔄 重新开始</button>
               </div>
           )}
           
